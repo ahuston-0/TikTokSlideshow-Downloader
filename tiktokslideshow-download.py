@@ -77,7 +77,7 @@ def json_to_netscape(json_file):
 # Fetch the TikTok page
 def fetch_page(url: str, file_path: str):
     options = Options()
-    # options.add_argument("--headless")
+    options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
@@ -87,7 +87,7 @@ def fetch_page(url: str, file_path: str):
 
     # Set up WebDriver Manager
     driver = webdriver.Chrome(
-        options=options, service=ChromeService(ChromeDriverManager().install())
+        options=options, service=ChromeService()
     )
     driver.get("https://www.tiktok.com/")
 

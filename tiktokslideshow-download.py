@@ -234,6 +234,7 @@ def check_audio_only(url, cookies_file):
     netscape_cookies = json_to_netscape(cookies_file)
 
     ydl_opts = {
+        "outtmpl": f"/tmp/%(title).100B.%(ext)s",  # Save with video title as filename
         "format": "best",  # Specify  format
         "noplaylist": True,  # Single video download
         "quiet": False,  # Verbose output

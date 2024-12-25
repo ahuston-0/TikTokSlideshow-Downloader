@@ -3,11 +3,12 @@ import itertools
 import json
 import re
 import time
+import typing
 from pathlib import Path
 
+import bs4
 import requests
 import yt_dlp
-from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -152,27 +153,27 @@ def parse_collections(html):
     # class link-a11y-focus, get href
     # get picture/img
     # alt is collection name, src is pic
-    soup = BeautifulSoup(html, "html.parser")
+    soup = bs4.BeautifulSoup(html, "html.parser")
     collection_tags = soup.select(".css-13fa1gi-DivWrapper")
     collections=[]
     for collection in collection_tags:
-        anchor = collection.find("a", "link-a11y-focus")
+        anchor = typing.cast(typing.Optional[bs4.element.Tag],collection.find("a", "link-a11y-focus"))
         if anchor is None:
             raise RuntimeError("Collection div with URL does not exist")
 
-        href:str = anchor["href"] # type: ignore
+        href = typing.cast(str,anchor["href"])
         url = "https://tiktok.com" + href
 
-        image = anchor.find("img")
+        image = typing.cast(typing.Optional[bs4.element.Tag],anchor.find("img"))
         if image is None:
             raise RuntimeError("Collection image is missing, name cannot be determined")
 
-        name= image["alt"] # type: ignore
-        image = image["src"] # type: ignore
+        name = image["alt"]
+        image_url = image["src"]
 
         collection_dict = {
             "name": name,
-            "image": image,
+            "image": image_url,
             "url": url
         }
         collections += [collection_dict]
@@ -194,6 +195,8 @@ def main():
 
     html = fetch_page(args.link, args.cookies)
     collections = parse_collections(html)
+    print(collections)
+    print(len(collections))
 
 
 if __name__ == "__main__":

@@ -134,7 +134,7 @@ def fetch_page(url: str, file_path: str):
         SCROLL_PAUSE_TIME = 2.0
 
         collection_count=int(driver.find_element(By.ID, "collections").text.split(" ")[-1])
-        print(f"expecting {collection_count}")
+        print(f"expecting {collection_count} collections")
 
         # get initial collections
         elements=driver.find_elements(By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")

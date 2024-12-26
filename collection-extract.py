@@ -223,8 +223,13 @@ def collections_to_dict(collections):
 def export_collections(collections,yaml_file):
     data = None
     yaml = YAML(typ='rt')
-    with open(yaml_file, 'r') as f:
-        data = yaml.load(f )
+
+    try:
+        with open(yaml_file, 'r') as f:
+            data = yaml.load(f)
+    except FileNotFoundError:
+        print("file does not exist, initializing to be empty dict")
+        data = {}
 
     if data is None:
         raise RuntimeError("failed to load yaml")

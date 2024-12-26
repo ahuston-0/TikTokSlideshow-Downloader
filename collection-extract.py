@@ -114,7 +114,6 @@ def fetch_page(url: str, file_path: str):
     options.add_argument("--window-size=1920x1080")
     options.add_argument(f"user-agent={UserAgent(platforms="desktop").chrome}")
 
-    print(UserAgent().chrome)
     # Set up WebDriver Manager
     driver = webdriver.Chrome(
         options=options, service=ChromeService()
@@ -139,7 +138,7 @@ def fetch_page(url: str, file_path: str):
 
         # get initial collections
         elements=driver.find_elements(By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")
-        print(f"starting with {len(elements)}")
+        print(f"starting with {len(elements)} collections")
         retries = 0
 
         while True:
@@ -156,7 +155,7 @@ def fetch_page(url: str, file_path: str):
             elem_set=set(new_elements)
             if set(elements) == elem_set:
                 if retries == 3 or len(elem_set) == collection_count:
-                    print(f"finishing with {len(elem_set)}")
+                    print(f"found {len(elem_set)} collections")
                     break
                 retries += 1
             else:
@@ -164,7 +163,7 @@ def fetch_page(url: str, file_path: str):
 
             if len(elements) < len(new_elements):
                 elements = new_elements
-            print(f"continuing with {len(elements)}")
+            print(f"continuing with {len(elements)} collections found")
 
         # time.sleep(100000)
         return driver.page_source
@@ -230,10 +229,6 @@ def export_collections(collections,yaml_file):
     if data is None:
         raise RuntimeError("failed to load yaml")
     data.update({"AutoCollections": collections})
-
-    old_keys = set(data["Collections"].keys())
-    new_keys = set(data["AutoCollections"].keys())
-    print(old_keys.symmetric_difference(new_keys))
 
     with open(yaml_file, 'w+') as f:
         yaml.dump(data,f)

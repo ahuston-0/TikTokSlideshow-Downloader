@@ -1,14 +1,13 @@
 import argparse
-import itertools
 import json
-import re
+import random
 import time
 import typing
 from pathlib import Path
 
 import bs4
-import requests
-import yt_dlp
+from fake_useragent import UserAgent
+from ruamel.yaml import YAML
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service as ChromeService
@@ -75,23 +74,53 @@ def json_to_netscape(json_file):
     except Exception as e:
         print(f"Error converting cookies: {e}")
 
+def nav_collections(driver):
+    # Wait for the page to load completely
+    WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located(
+            (By.CSS_SELECTOR, ".css-18ie8zf-PFavorite")
+        )
+            )
+
+    # go to favorites
+    clickable = driver.find_element(By.CSS_SELECTOR, ".css-18ie8zf-PFavorite");
+    clickable.click()
+    WebDriverWait(driver, 10).until(
+        EC.visibility_of_all_elements_located(
+            (By.ID, "collections")
+        )
+    )
+
+    # get collections
+    clickable = driver.find_element(By.ID, "collections");
+    clickable.click()
+
+    WebDriverWait(driver, 10).until(
+        EC.visibility_of_all_elements_located(
+            (By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")
+        )
+    )
 
 # Fetch the TikTok page
 def fetch_page(url: str, file_path: str):
     options = Options()
-    # options.add_argument("--headless")
+    options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("start-maximized")
     options.add_argument("enable-automation")
     options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--window-size=1920x1080")
+    options.add_argument(f"user-agent={UserAgent(platforms="desktop").chrome}")
 
+    print(UserAgent().chrome)
     # Set up WebDriver Manager
     driver = webdriver.Chrome(
         options=options, service=ChromeService()
     )
     driver.get("https://www.tiktok.com/")
+    driver.set_window_size(1920, 1080)
 
     # Load cookies
     load_cookies(driver, file_path)
@@ -101,44 +130,41 @@ def fetch_page(url: str, file_path: str):
     driver.get(url)
 
     try:
-        # Wait for the page to load completely
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, ".css-18ie8zf-PFavorite")
-            )
-        )
-
-        # go to favorites
-        clickable = driver.find_element(By.CSS_SELECTOR, ".css-18ie8zf-PFavorite");
-        clickable.click()
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located(
-                (By.ID, "collections")
-            )
-        )
-
-        # get collections
-        clickable = driver.find_element(By.ID, "collections");
-        clickable.click()
-
+        nav_collections(driver)
         # load all collections
-        SCROLL_PAUSE_TIME = 1.0
+        SCROLL_PAUSE_TIME = 2.0
 
-        # Get scroll height
-        last_height = driver.execute_script("return document.body.scrollHeight")
+        collection_count=int(driver.find_element(By.ID, "collections").text.split(" ")[-1])
+        print(f"expecting {collection_count}")
+
+        # get initial collections
+        elements=driver.find_elements(By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")
+        print(f"starting with {len(elements)}")
+        retries = 0
 
         while True:
-            # Scroll down to bottom
+            for element in elements:
+                driver.execute_script("arguments[0].scrollIntoView();", element)
+                time.sleep(SCROLL_PAUSE_TIME/(len(elements)**0.5)*random.random() )
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
             # Wait to load page
             time.sleep(SCROLL_PAUSE_TIME)
 
-            # Calculate new scroll height and compare with last scroll height
-            new_height = driver.execute_script("return document.body.scrollHeight")
-            if new_height == last_height:
-                break
-            last_height = new_height
+            new_elements=driver.find_elements(By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")
+
+            elem_set=set(new_elements)
+            if set(elements) == elem_set:
+                if retries == 3 or len(elem_set) == collection_count:
+                    print(f"finishing with {len(elem_set)}")
+                    break
+                retries += 1
+            else:
+                retries = 0
+
+            if len(elements) < len(new_elements):
+                elements = new_elements
+            print(f"continuing with {len(elements)}")
 
         # time.sleep(100000)
         return driver.page_source
@@ -180,6 +206,37 @@ def parse_collections(html):
 
     return collections
 
+def collections_to_dict(collections):
+    collection_dict = {}
+    trans_table = str.maketrans(" ", "-")
+    for collection in collections:
+        fixed_name = collection["name"]
+        fixed_name = ''.join(char for char in fixed_name if char.isascii())
+        fixed_name = fixed_name.strip()
+        fixed_name = fixed_name.translate(trans_table)
+        fixed_name = ''.join(char for char in fixed_name if char.isalnum() or char == '-')
+
+        collection_dict.update({fixed_name: collection})
+
+    return collection_dict
+
+
+def export_collections(collections,yaml_file):
+    data = None
+    yaml = YAML(typ='rt')
+    with open(yaml_file, 'r') as f:
+        data = yaml.load(f )
+
+    if data is None:
+        raise RuntimeError("failed to load yaml")
+    data.update({"AutoCollections": collections})
+
+    old_keys = set(data["Collections"].keys())
+    new_keys = set(data["AutoCollections"].keys())
+    print(old_keys.symmetric_difference(new_keys))
+
+    with open(yaml_file, 'w+') as f:
+        yaml.dump(data,f)
 
 def main():
     # Parse command-line args
@@ -189,15 +246,15 @@ def main():
         "--cookies", required=True, help="Path to the cookies file (cookies.json)"
     )
     parser.add_argument(
-        "--output", required=True, help="Output "
+        "--output", required=True, help="Output to yaml file "
     )
     args = parser.parse_args()
 
     html = fetch_page(args.link, args.cookies)
     collections = parse_collections(html)
-    print(collections)
-    print(len(collections))
+    collections = collections_to_dict(collections)
 
+    export_collections(collections, args.output)
 
 if __name__ == "__main__":
     main()

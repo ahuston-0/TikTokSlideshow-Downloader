@@ -97,7 +97,7 @@ def nav_collections(driver):
 
     WebDriverWait(driver, 10).until(
         EC.visibility_of_all_elements_located(
-            (By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")
+            (By.CSS_SELECTOR, "[data-e2e='collection-item']")
         )
     )
 
@@ -137,7 +137,7 @@ def fetch_page(url: str, file_path: str):
         print(f"expecting {collection_count} collections")
 
         # get initial collections
-        elements=driver.find_elements(By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")
+        elements=driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
         print(f"starting with {len(elements)} collections")
         retries = 0
 
@@ -150,7 +150,7 @@ def fetch_page(url: str, file_path: str):
             # Wait to load page
             time.sleep(SCROLL_PAUSE_TIME)
 
-            new_elements=driver.find_elements(By.CLASS_NAME, "css-1uqux2o-DivItemContainerV2")
+            new_elements=driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
 
             elem_set=set(new_elements)
             if set(elements) == elem_set:
@@ -179,7 +179,7 @@ def parse_collections(html):
     # get picture/img
     # alt is collection name, src is pic
     soup = bs4.BeautifulSoup(html, "html.parser")
-    collection_tags = soup.select(".css-13fa1gi-DivWrapper")
+    collection_tags = soup.find_all("div",attrs={"data-e2e":"collection-item"})
     collections=[]
     for collection in collection_tags:
         anchor = typing.cast(typing.Optional[bs4.element.Tag],collection.find("a", "link-a11y-focus"))

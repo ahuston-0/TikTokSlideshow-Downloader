@@ -190,11 +190,20 @@ def parse_collections(html):
         url = "https://tiktok.com" + href
 
         image = typing.cast(typing.Optional[bs4.element.Tag],anchor.find("img"))
+        name=""
+        image_url=""
         if image is None:
-            raise RuntimeError("Collection image is missing, name cannot be determined")
+             footer=typing.cast(typing.Optional[bs4.element.Tag],anchor.find("div",attrs={"data-e2e":"collection-card-footer"}))
+             if footer is None:
+                 raise RuntimeError("name cannot be determined")
+             span=footer.find("span")
+             if span is None:
+                 raise RuntimeError("name cannot be determined")
+             name=span.text
+        else:
+            name = image["alt"]
+            image_url = image["src"]
 
-        name = image["alt"]
-        image_url = image["src"]
 
         collection_dict = {
             "name": name,

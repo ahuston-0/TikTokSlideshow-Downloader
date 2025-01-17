@@ -128,11 +128,12 @@ def fetch_page(url: str, file_path: str):
 
         print(f"starting with {len(elements)} following")
         retries = 0
+        batch_count=30
 
         while True:
-            for element in elements[-30:]:
+            for element in elements[-batch_count:]:
                 driver.execute_script("arguments[0].scrollIntoView();", element)
-                time.sleep(SCROLL_PAUSE_TIME/(len(elements)**0.5)*random.random() )
+                time.sleep(SCROLL_PAUSE_TIME/(batch_count**0.5)*random.random() )
 
             # Wait to load page
             time.sleep(SCROLL_PAUSE_TIME)
@@ -166,7 +167,7 @@ def parse_following(html):
     # alt is collection name, src is pic
     soup = bs4.BeautifulSoup(html, "html.parser")
     following = soup.find_all("p",class_="es616eb8")
-    following = [i.text for i in following]
+    following = [i.text + '\n' for i in following]
 
     return following
 

@@ -266,7 +266,7 @@ def extract_video_id(url):
     Short URLs (such as those shared externally) need a GET request to resolve the full URL first
     """
     # retrieve the 19 digit video ID, rest is optional
-    video_id_pattern = re.compile(r'tiktok\.com/.*/(\d{,19})(?:\?.*)?')
+    video_id_pattern = re.compile(r'tiktok\.com/.*/(\d{1,19})(?:\?.*)?')
 
     # Attempt to find the video ID in the given URL
     match = video_id_pattern.search(url)

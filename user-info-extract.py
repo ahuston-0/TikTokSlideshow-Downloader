@@ -1,4 +1,6 @@
 import json
+import re
+import requests
 import sqlite3
 from pathlib import Path
 
@@ -6,10 +8,11 @@ from tikapi import TikAPI, ValidationException, ResponseException
 
 MAX_ATTEMPTS=2
 base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
+# base_dir="/home/alice/Scripts/tiktok-backup/"
 video_dir="raw-videos"
 user_dir="user-details"
 database_path=f"{base_dir}/{video_dir}/index.db"
-
+image_regex=re.compile(r"\/([^\/]*jpeg)")
 
 def extract_users(username):
     api_key = 'ZabNce77y54F66CRzTauFRvndXviTEcLbaOj0ofMUtnxiDwx'
@@ -92,17 +95,37 @@ def fetch_users():
     users = res.fetchall()
     return users
 
+def fetch_image(path,image_url):
+    img_data = requests.get(image_url).content
+    with open(path, 'wb') as handler:
+        handler.write(img_data)
+
 def main():
 
     users = fetch_users()
     for (userid, username) in users:
+        print(userid,username)
         user_data = extract_users(username)
+        if user_data is None:
+            continue
         user_path=f"{base_dir}/{user_dir}/{userid}"
         Path(user_path).mkdir(exist_ok=True)
 
-        print(userid,username)
+        avatar_larger_url=user_data["userInfo"]["user"]["avatarLarger"]
+        avatar_medium_url=user_data["userInfo"]["user"]["avatarMedium"]
+        avatar_thumb_url=user_data["userInfo"]["user"]["avatarThumb"]
+
+        avatar_larger_name=image_regex.search(avatar_larger_url).group(1)
+
+        avatar_medium_name=image_regex.search(avatar_medium_url).group(1)
+        avatar_thumb_name=image_regex.search(avatar_thumb_url).group(1)
+
         with open(f"{user_path}/info.json", 'w', encoding='utf-8') as f:
             json.dump(user_data, f, ensure_ascii=False, indent=4)
+
+        fetch_image(f"{user_path}/{avatar_larger_name}",avatar_larger_url)
+        fetch_image(f"{user_path}/{avatar_medium_name}",avatar_medium_url)
+        fetch_image(f"{user_path}/{avatar_thumb_name}",avatar_thumb_url)
 
 
 if __name__ == "__main__":

@@ -28,8 +28,16 @@ def extract_users(username):
         print(e, e.field)
 
     except ResponseException as e:
+        if int(e.response.status_code) == 429:
+            exit(1)
         print(e, e.response.status_code)
 
+def update_user_details_table(userid,username):
+    con =  sqlite3.connect(database_path,timeout = 500)
+    user_query="insert into userdetailtable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set lastupdatedts=unixepoch('now')"
+    con.execute(user_query,(userid,username))
+    con.commit()
+    con.close()
 
 
 # TODO: auto load cookies from browser files
@@ -91,8 +99,10 @@ def json_to_netscape(json_file):
 
 def fetch_users():
     con =  sqlite3.connect(database_path,timeout = 500)
-    res = con.execute("select * from usertable;")
+    user_query="SELECT t1.userid, t1.username FROM usertable t1 LEFT JOIN userdetailtable t2 ON t2.userid = t1.userid WHERE t2.userid IS null"
+    res = con.execute(user_query)
     users = res.fetchall()
+    con.close()
     return users
 
 def fetch_image(path,image_url):
@@ -105,6 +115,7 @@ def main():
     users = fetch_users()
     for (userid, username) in users:
         print(userid,username)
+
         user_data = extract_users(username)
         if user_data is None:
             continue
@@ -126,6 +137,7 @@ def main():
         fetch_image(f"{user_path}/{avatar_larger_name}",avatar_larger_url)
         fetch_image(f"{user_path}/{avatar_medium_name}",avatar_medium_url)
         fetch_image(f"{user_path}/{avatar_thumb_name}",avatar_thumb_url)
+        update_user_details_table(userid,username)
 
 
 if __name__ == "__main__":

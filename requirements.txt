@@ -8,6 +8,7 @@ fake-useragent==2.0.3
 h11==0.14.0
 idna==3.10
 lz4==4.3.3
+more-itertools==10.6.0
 outcome==1.3.0.post0
 packaging==24.2
 pycparser==2.22

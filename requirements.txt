@@ -20,6 +20,7 @@ selenium==4.27.1
 sniffio==1.3.1
 sortedcontainers==2.4.0
 soupsieve==2.6
+tikapi==3.2.0
 TikTokApi==6.5.2
 trio==0.27.0
 trio-websocket==0.11.1

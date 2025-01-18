@@ -1,34 +1,32 @@
-import argparse
-import asyncio
 import json
-import random
-import time
-import typing
+import sqlite3
 from pathlib import Path
 
-from TikTokApi import TikTokApi
-from TikTokApi import exceptions as tt_exceptions
-from urllib.parse import urlencode, quote, urlparse
-from fake_useragent import UserAgent
+from tikapi import TikAPI, ValidationException, ResponseException
 
-MAX_ATTEMPTS=5
+MAX_ATTEMPTS=2
+base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
+video_dir="raw-videos"
+user_dir="user-details"
+database_path=f"{base_dir}/{video_dir}/index.db"
 
-async def user_example(cookies,username, attempts_left=MAX_ATTEMPTS):
-    attempt_number=MAX_ATTEMPTS-attempts_left+1
-    if attempts_left==0:
-        raise RuntimeError("max attempts exceeded")
-    print(f"attempt {attempt_number}")
-    user_agent=UserAgent(platforms="desktop").chrome
-    async with TikTokApi() as api:
-        await api.create_sessions(cookies=[cookies], num_sessions=1, sleep_after=3)
-        try:
-            user = api.user(username)
-            user_data = await user.info()
-            return user_data
-        except tt_exceptions.EmptyResponseException:
-            time.sleep(2 ** attempt_number)
-            user_data = await user_example(cookies,username,attempts_left=attempts_left-1)
-            return user_data
+
+def extract_users(username):
+    api_key = 'ZabNce77y54F66CRzTauFRvndXviTEcLbaOj0ofMUtnxiDwx'
+    api = TikAPI(api_key)
+    try:
+        response = api.public.check(
+            username=username
+        )
+
+        return response.json()
+
+    except ValidationException as e:
+        print(e, e.field)
+
+    except ResponseException as e:
+        print(e, e.response.status_code)
+
 
 
 # TODO: auto load cookies from browser files
@@ -88,213 +86,24 @@ def json_to_netscape(json_file):
     except Exception as e:
         print(f"Error converting cookies: {e}")
 
-def nav_collections(driver):
-    # Wait for the page to load completely
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_element_located(
-            (By.CSS_SELECTOR, ".css-18ie8zf-PFavorite")
-        )
-            )
-
-    # go to favorites
-    clickable = driver.find_element(By.CSS_SELECTOR, ".css-18ie8zf-PFavorite");
-    clickable.click()
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_all_elements_located(
-            (By.ID, "collections")
-        )
-    )
-
-    # get collections
-    clickable = driver.find_element(By.ID, "collections");
-    clickable.click()
-
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_all_elements_located(
-            (By.CSS_SELECTOR, "[data-e2e='collection-item']")
-        )
-    )
-
-# Fetch the TikTok page
-def fetch_page(url: str, file_path: str):
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("start-maximized")
-    options.add_argument("enable-automation")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--window-size=1920x1080")
-    user_agent=UserAgent(platforms="desktop").chrome
-    options.add_argument(f"user-agent={user_agent}")
-
-    # Set up WebDriver Manager
-    driver = webdriver.Chrome(
-        options=options, service=ChromeService()
-    )
-    driver.get("https://www.tiktok.com/")
-    driver.set_window_size(1920, 1080)
-
-    # Load cookies
-    load_cookies(driver, file_path)
-    driver.refresh()
-
-    # Navigate to the target URL
-    driver.get(url)
-
-    try:
-        nav_collections(driver)
-        # load all collections
-        SCROLL_PAUSE_TIME = 2.0
-
-        collection_count=int(driver.find_element(By.ID, "collections").text.split(" ")[-1])
-        print(f"expecting {collection_count} collections")
-
-        # get initial collections
-        elements=driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
-        print(f"starting with {len(elements)} collections")
-        retries = 0
-
-        while True:
-            for element in elements:
-                driver.execute_script("arguments[0].scrollIntoView();", element)
-                time.sleep(SCROLL_PAUSE_TIME/(len(elements)**0.5)*random.random() )
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-
-            # Wait to load page
-            time.sleep(SCROLL_PAUSE_TIME)
-
-            new_elements=driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
-
-            elem_set=set(new_elements)
-            if set(elements) == elem_set:
-                if retries == 3 or len(elem_set) == collection_count:
-                    print(f"found {len(elem_set)} collections")
-                    break
-                retries += 1
-            else:
-                retries = 0
-
-            if len(elements) < len(new_elements):
-                elements = new_elements
-            print(f"continuing with {len(elements)} collections found")
-
-        # time.sleep(100000)
-        return driver.page_source
-    except Exception as e:
-        print(f"Failed to fetch the page: {e}")
-        return None
-    finally:
-        driver.quit()
-
-def parse_collections(html):
-    # collection div class css-13fa1gi-DivWrapper
-    # class link-a11y-focus, get href
-    # get picture/img
-    # alt is collection name, src is pic
-    soup = bs4.BeautifulSoup(html, "html.parser")
-    collection_tags = soup.find_all("div",attrs={"data-e2e":"collection-item"})
-    collections=[]
-    for collection in collection_tags:
-        anchor = typing.cast(typing.Optional[bs4.element.Tag],collection.find("a", "link-a11y-focus"))
-        if anchor is None:
-            raise RuntimeError("Collection div with URL does not exist")
-
-        href = typing.cast(str,anchor["href"])
-        url = "https://tiktok.com" + href
-
-        image = typing.cast(typing.Optional[bs4.element.Tag],anchor.find("img"))
-        name=""
-        image_url=""
-        if image is None:
-             footer=typing.cast(typing.Optional[bs4.element.Tag],anchor.find("div",attrs={"data-e2e":"collection-card-footer"}))
-             if footer is None:
-                 raise RuntimeError("name cannot be determined")
-             span=footer.find("span")
-             if span is None:
-                 raise RuntimeError("name cannot be determined")
-             name=span.text
-        else:
-            name = image["alt"]
-            image_url = image["src"]
-
-
-        collection_dict = {
-            "name": name,
-            "image": image_url,
-            "url": url
-        }
-        collections += [collection_dict]
-
-    return collections
-
-def collections_to_dict(collections):
-    collection_dict = {}
-    trans_table = str.maketrans(" ", "-")
-    for collection in collections:
-        fixed_name = collection["name"]
-        fixed_name = ''.join(char for char in fixed_name if char.isascii())
-        fixed_name = fixed_name.strip()
-        fixed_name = fixed_name.translate(trans_table)
-        fixed_name = ''.join(char for char in fixed_name if char.isalnum() or char == '-')
-
-        collection_dict.update({fixed_name: collection})
-
-    return collection_dict
-
-
-def export_collections(collections,yaml_file):
-    data = None
-    yaml = YAML(typ='rt')
-
-    try:
-        with open(yaml_file, 'r') as f:
-            data = yaml.load(f)
-    except FileNotFoundError:
-        print("file does not exist, initializing to be empty dict")
-        data = {}
-
-    if data is None:
-        raise RuntimeError("failed to load yaml")
-    data.update({"AutoCollections": collections})
-
-    with open(yaml_file, 'w+') as f:
-        yaml.dump(data,f)
-
-def get_cookies_from_file(cookie_path:str):
-    with open(cookie_path) as f:
-        cookies = json.load(f)
-
-    cookies_kv = {}
-    for cookie in cookies:
-        cookies_kv[cookie['name']] = cookie['value']
-
-    return cookies_kv
+def fetch_users():
+    con =  sqlite3.connect(database_path,timeout = 500)
+    res = con.execute("select * from usertable;")
+    users = res.fetchall()
+    return users
 
 def main():
-    # Parse command-line args
-    parser = argparse.ArgumentParser(description="Download TikTok slideshow images.")
-    parser.add_argument("user", help="TikTok username")
-    parser.add_argument(
-        "--cookies", required=True, help="Path to the cookies file (cookies.json)"
-    )
-    parser.add_argument(
-        "--output", required=True, help="Path to dump the resulting user json"
-    )
-    args = parser.parse_args()
 
-    cookies=get_cookies_from_file(args.cookies)
+    users = fetch_users()
+    for (userid, username) in users:
+        user_data = extract_users(username)
+        user_path=f"{base_dir}/{user_dir}/{userid}"
+        Path(user_path).mkdir(exist_ok=True)
 
-    user_data=asyncio.run(user_example(cookies,args.user))
-    with open(args.output, 'w', encoding='utf-8') as f:
-        json.dump(user_data, f, ensure_ascii=False, indent=4)
+        print(userid,username)
+        with open(f"{user_path}/info.json", 'w', encoding='utf-8') as f:
+            json.dump(user_data, f, ensure_ascii=False, indent=4)
 
-    # html = fetch_page(args.link, args.cookies)
-    # collections = parse_collections(html)
-    # collections = collections_to_dict(collections)
-
-    # export_collections(collections, args.output)
 
 if __name__ == "__main__":
     main()

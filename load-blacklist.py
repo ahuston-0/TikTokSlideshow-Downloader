@@ -7,7 +7,6 @@ import json
 from more_itertools import ichunked
 
 base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
-base_dir="."
 video_dir="raw-videos"
 database_path=f"{base_dir}/{video_dir}/index.db"
 

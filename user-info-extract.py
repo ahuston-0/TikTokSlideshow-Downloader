@@ -16,6 +16,7 @@ image_regex=re.compile(r"\/([^\/]*jpeg)")
 
 def extract_users(username):
     api_key = 'ZabNce77y54F66CRzTauFRvndXviTEcLbaOj0ofMUtnxiDwx'
+    print(f"extracting {username}")
     api = TikAPI(api_key)
     try:
         response = api.public.check(
@@ -33,6 +34,7 @@ def extract_users(username):
         print(e, e.response.status_code)
 
 def update_user_details_table(userid,username):
+    print(f"updating user detail ts for {username}")
     con =  sqlite3.connect(database_path,timeout = 500)
     user_query="insert into userdetailtable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set lastupdatedts=unixepoch('now')"
     con.execute(user_query,(userid,username))
@@ -98,6 +100,7 @@ def json_to_netscape(json_file):
         print(f"Error converting cookies: {e}")
 
 def fetch_users():
+    print("fetching un-checked users")
     con =  sqlite3.connect(database_path,timeout = 500)
     user_query="SELECT t1.userid, t1.username FROM usertable t1 LEFT JOIN userdetailtable t2 ON t2.userid = t1.userid WHERE t2.userid IS null"
     res = con.execute(user_query)
@@ -106,6 +109,7 @@ def fetch_users():
     return users
 
 def fetch_image(path,image_url):
+    print(f"fetching image {path}")
     img_data = requests.get(image_url).content
     with open(path, 'wb') as handler:
         handler.write(img_data)

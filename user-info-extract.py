@@ -1,4 +1,5 @@
 import json
+import random
 import re
 import requests
 import sqlite3
@@ -12,7 +13,7 @@ base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
 video_dir="raw-videos"
 user_dir="user-details"
 database_path=f"{base_dir}/{video_dir}/index.db"
-image_regex=re.compile(r"\/([^\/]*jpeg)")
+image_regex=re.compile(r"\/([^\/]*\.(?:jpeg|png|jpg|image))")
 
 def extract_users(username):
     api_key = 'ZabNce77y54F66CRzTauFRvndXviTEcLbaOj0ofMUtnxiDwx'
@@ -126,6 +127,8 @@ def main():
         user_path=f"{base_dir}/{user_dir}/{userid}"
         Path(user_path).mkdir(exist_ok=True)
 
+        with open(f"{user_path}/info.json", 'w', encoding='utf-8') as f:
+            json.dump(user_data, f, ensure_ascii=False, indent=4)
         avatar_larger_url=user_data["userInfo"]["user"]["avatarLarger"]
         avatar_medium_url=user_data["userInfo"]["user"]["avatarMedium"]
         avatar_thumb_url=user_data["userInfo"]["user"]["avatarThumb"]
@@ -135,8 +138,6 @@ def main():
         avatar_medium_name=image_regex.search(avatar_medium_url).group(1)
         avatar_thumb_name=image_regex.search(avatar_thumb_url).group(1)
 
-        with open(f"{user_path}/info.json", 'w', encoding='utf-8') as f:
-            json.dump(user_data, f, ensure_ascii=False, indent=4)
 
         fetch_image(f"{user_path}/{avatar_larger_name}",avatar_larger_url)
         fetch_image(f"{user_path}/{avatar_medium_name}",avatar_medium_url)

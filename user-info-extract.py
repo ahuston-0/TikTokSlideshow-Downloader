@@ -16,7 +16,9 @@ database_path=f"{base_dir}/{video_dir}/index.db"
 image_regex=re.compile(r"\/([^\/]*\.(?:jpeg|png|jpg|image))")
 
 def extract_users(username):
-    api_key = 'ZabNce77y54F66CRzTauFRvndXviTEcLbaOj0ofMUtnxiDwx'
+    api_key=None
+    with open("./tikapi.key","r") as f:
+        api_key=f.read()
     print(f"extracting {username}")
     api = TikAPI(api_key)
     try:
@@ -133,11 +135,13 @@ def main():
         avatar_medium_url=user_data["userInfo"]["user"]["avatarMedium"]
         avatar_thumb_url=user_data["userInfo"]["user"]["avatarThumb"]
 
-        avatar_larger_name=image_regex.search(avatar_larger_url).group(1)
+        avatar_larger_name=image_regex.search(avatar_larger_url)
+        avatar_medium_name=image_regex.search(avatar_medium_url)
+        avatar_thumb_name=image_regex.search(avatar_thumb_url)
 
-        avatar_medium_name=image_regex.search(avatar_medium_url).group(1)
-        avatar_thumb_name=image_regex.search(avatar_thumb_url).group(1)
-
+        avatar_larger_name = avatar_larger_name.group(1) if avatar_larger_name is not None else "profile_large.image"
+        avatar_medium_name = avatar_medium_name.group(1) if avatar_medium_name is not None else "profile_medium.image"
+        avatar_thumb_name = avatar_thumb_name.group(1) if avatar_thumb_name is not None else "profile_thumb.image"
 
         fetch_image(f"{user_path}/{avatar_larger_name}",avatar_larger_url)
         fetch_image(f"{user_path}/{avatar_medium_name}",avatar_medium_url)

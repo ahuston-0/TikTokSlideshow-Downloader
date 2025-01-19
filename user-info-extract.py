@@ -9,7 +9,7 @@ from tikapi import TikAPI, ValidationException, ResponseException
 
 MAX_ATTEMPTS=2
 base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
-base_dir="/home/alice/Scripts/tiktok-backup/"
+# base_dir="/home/alice/Scripts/tiktok-backup/"
 video_dir="raw-videos"
 user_dir="user-details"
 database_path=f"{base_dir}/{video_dir}/index.db"

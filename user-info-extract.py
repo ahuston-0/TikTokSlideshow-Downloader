@@ -9,7 +9,7 @@ from tikapi import TikAPI, ValidationException, ResponseException
 
 MAX_ATTEMPTS=2
 base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
-# base_dir="/home/alice/Scripts/tiktok-backup/"
+base_dir="/home/alice/Scripts/tiktok-backup/"
 video_dir="raw-videos"
 user_dir="user-details"
 database_path=f"{base_dir}/{video_dir}/index.db"
@@ -36,11 +36,20 @@ def extract_users(username):
             exit(1)
         print(e, e.response.status_code)
 
+
 def update_user_details_table(userid,username):
     print(f"updating user detail ts for {username}")
     con =  sqlite3.connect(database_path,timeout = 500)
-    user_query="insert into userdetailtable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set lastupdatedts=unixepoch('now')"
-    con.execute(user_query,(userid,username))
+    user_query="insert into userdetailtable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set username=?,lastupdatedts=unixepoch('now')"
+    con.execute(user_query,(userid,username,username))
+    con.commit()
+    con.close()
+
+def blacklist_user(userid,username):
+    print(f"blacklisting {userid}/{username}")
+    con =  sqlite3.connect(database_path,timeout = 500)
+    user_query="insert into userblacklisttable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set username=?,lastupdatedts=unixepoch('now')"
+    con.execute(user_query,(userid,username,username))
     con.commit()
     con.close()
 
@@ -105,7 +114,12 @@ def json_to_netscape(json_file):
 def fetch_users():
     print("fetching un-checked users")
     con =  sqlite3.connect(database_path,timeout = 500)
-    user_query="SELECT t1.userid, t1.username FROM usertable t1 LEFT JOIN userdetailtable t2 ON t2.userid = t1.userid WHERE t2.userid IS null"
+    user_query="""
+    SELECT t1.userid, t1.username FROM usertable t1
+    LEFT JOIN userdetailtable t2 ON t2.userid = t1.userid
+    LEFT JOIN userblacklisttable t3 on t3.userid=t1.userid
+    WHERE t2.userid IS null AND t3.userid IS null
+    """
     res = con.execute(user_query)
     users = res.fetchall()
     con.close()
@@ -120,33 +134,48 @@ def fetch_image(path,image_url):
 def main():
 
     users = fetch_users()
+    empty_json = {}
+    with open(f"./empty.json", "r") as f:
+        empty_json = json.load(f)
+
     for (userid, username) in users:
-        print(userid,username)
+        max_retries = 3
+        retries = max_retries
+        for i in range(1,retries+1):
+            retries -= 1
+            print(f"{userid}/{username}: attempt ({i}/{max_retries})")
+            user_data = extract_users(username)
 
-        user_data = extract_users(username)
-        if user_data is None:
-            continue
-        user_path=f"{base_dir}/{user_dir}/{userid}"
-        Path(user_path).mkdir(exist_ok=True)
+            if user_data is None:
+                continue
+            if user_data == empty_json:
+                continue
 
-        with open(f"{user_path}/info.json", 'w', encoding='utf-8') as f:
-            json.dump(user_data, f, ensure_ascii=False, indent=4)
-        avatar_larger_url=user_data["userInfo"]["user"]["avatarLarger"]
-        avatar_medium_url=user_data["userInfo"]["user"]["avatarMedium"]
-        avatar_thumb_url=user_data["userInfo"]["user"]["avatarThumb"]
+            user_path=f"{base_dir}/{user_dir}/{userid}"
+            Path(user_path).mkdir(exist_ok=True)
 
-        avatar_larger_name=image_regex.search(avatar_larger_url)
-        avatar_medium_name=image_regex.search(avatar_medium_url)
-        avatar_thumb_name=image_regex.search(avatar_thumb_url)
+            with open(f"{user_path}/info.json", 'w', encoding='utf-8') as f:
+                json.dump(user_data, f, ensure_ascii=False, indent=4)
+            avatar_larger_url=user_data["userInfo"]["user"]["avatarLarger"]
+            avatar_medium_url=user_data["userInfo"]["user"]["avatarMedium"]
+            avatar_thumb_url=user_data["userInfo"]["user"]["avatarThumb"]
 
-        avatar_larger_name = avatar_larger_name.group(1) if avatar_larger_name is not None else "profile_large.image"
-        avatar_medium_name = avatar_medium_name.group(1) if avatar_medium_name is not None else "profile_medium.image"
-        avatar_thumb_name = avatar_thumb_name.group(1) if avatar_thumb_name is not None else "profile_thumb.image"
+            avatar_larger_name=image_regex.search(avatar_larger_url)
+            avatar_medium_name=image_regex.search(avatar_medium_url)
+            avatar_thumb_name=image_regex.search(avatar_thumb_url)
 
-        fetch_image(f"{user_path}/{avatar_larger_name}",avatar_larger_url)
-        fetch_image(f"{user_path}/{avatar_medium_name}",avatar_medium_url)
-        fetch_image(f"{user_path}/{avatar_thumb_name}",avatar_thumb_url)
-        update_user_details_table(userid,username)
+            avatar_larger_name = avatar_larger_name.group(1) if avatar_larger_name is not None else "profile_large.image"
+            avatar_medium_name = avatar_medium_name.group(1) if avatar_medium_name is not None else "profile_medium.image"
+            avatar_thumb_name = avatar_thumb_name.group(1) if avatar_thumb_name is not None else "profile_thumb.image"
+
+            fetch_image(f"{user_path}/{avatar_larger_name}",avatar_larger_url)
+            fetch_image(f"{user_path}/{avatar_medium_name}",avatar_medium_url)
+            fetch_image(f"{user_path}/{avatar_thumb_name}",avatar_thumb_url)
+            update_user_details_table(userid,username)
+
+            break
+        blacklist_user(userid,username)
+
 
 
 if __name__ == "__main__":

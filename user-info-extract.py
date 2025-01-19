@@ -18,7 +18,7 @@ image_regex=re.compile(r"\/([^\/]*\.(?:jpeg|png|jpg|image))")
 def extract_users(username):
     api_key=None
     with open("./tikapi.key","r") as f:
-        api_key=f.read()
+        api_key=f.read().strip()
     print(f"extracting {username}")
     api = TikAPI(api_key)
     try:

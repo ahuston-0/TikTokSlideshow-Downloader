@@ -9,7 +9,6 @@ from tikapi import TikAPI, ValidationException, ResponseException
 
 MAX_ATTEMPTS=2
 base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
-# base_dir="/home/alice/Scripts/tiktok-backup/"
 video_dir="raw-videos"
 user_dir="user-details"
 database_path=f"{base_dir}/{video_dir}/index.db"
@@ -141,14 +140,18 @@ def main():
     for (userid, username) in users:
         max_retries = 3
         retries = max_retries
+        failed = 0
         for i in range(1,retries+1):
             retries -= 1
             print(f"{userid}/{username}: attempt ({i}/{max_retries})")
             user_data = extract_users(username)
 
+            #print(user_data)
             if user_data is None:
+                failed += 1
                 continue
             if user_data == empty_json:
+                failed += 1
                 continue
 
             user_path=f"{base_dir}/{user_dir}/{userid}"
@@ -174,7 +177,8 @@ def main():
             update_user_details_table(userid,username)
 
             break
-        blacklist_user(userid,username)
+        if failed == max_retries:
+            blacklist_user(userid,username)
 
 
 

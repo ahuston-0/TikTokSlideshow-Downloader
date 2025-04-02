@@ -65,9 +65,7 @@ def json_to_netscape(json_file):
                 value = cookie.get("value", "")
 
                 # Write to Netscape format
-                file.write(
-                    f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n"
-                )
+                file.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
 
         return netscape_file
     except Exception as e:
@@ -86,9 +84,7 @@ def fetch_page(url: str, file_path: str):
     options.add_argument("--disable-blink-features=AutomationControlled")
 
     # Set up WebDriver Manager
-    driver = webdriver.Chrome(
-        options=options, service=ChromeService()
-    )
+    driver = webdriver.Chrome(options=options, service=ChromeService())
     driver.get("https://www.tiktok.com/")
 
     # Load cookies
@@ -101,9 +97,7 @@ def fetch_page(url: str, file_path: str):
     try:
         # Wait for the page to load completely
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, ".css-brxox6-ImgPhotoSlide.e10jea832")
-            )
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".css-brxox6-ImgPhotoSlide.e10jea832"))
         )
         return driver.page_source
     except Exception as e:
@@ -122,32 +116,31 @@ def parse_slideshow_links(html):
     # Flatten any nested lists
     flat_image_links = list(
         itertools.chain(
-            *[
-                sublist if isinstance(sublist, list) else [sublist]
-                for sublist in image_links
-            ]
+            *[sublist if isinstance(sublist, list) else [sublist] for sublist in image_links]
         )
     )
     return flat_image_links
+
 
 # Parse image links from the slideshow
 def parse_slideshow_links_with_index(html):
     soup = BeautifulSoup(html, "html.parser")
     image_tags = soup.select(".css-brxox6-ImgPhotoSlide.e10jea832")
-    image_links = [(img["src"],img.parent["data-swiper-slide-index"] ) for img in image_tags if "src" in img.attrs and img.parent]
+    image_links = [
+        (img["src"], img.parent["data-swiper-slide-index"])
+        for img in image_tags
+        if "src" in img.attrs and img.parent
+    ]
 
     # Flatten any nested lists
     flat_image_links = list(
         itertools.chain(
-            *[
-                sublist if isinstance(sublist, list) else [sublist]
-                for sublist in image_links
-            ]
+            *[sublist if isinstance(sublist, list) else [sublist] for sublist in image_links]
         )
     )
 
     # dedup list so each entry is only downloaded once
-    flat_image_links: list[tuple[str,int]] = list(dict.fromkeys(flat_image_links))
+    flat_image_links: list[tuple[str, int]] = list(dict.fromkeys(flat_image_links))
     return flat_image_links
 
 
@@ -169,12 +162,13 @@ def download_images(image_links: list[str], output_dir):
         except requests.RequestException as e:
             print(f"Failed to download {link}: {e}")
 
+
 # Download images
-def download_images_with_index(video_id, image_links: list[tuple[str,int]], output_dir):
+def download_images_with_index(video_id, image_links: list[tuple[str, int]], output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(exist_ok=True)
 
-    for (link,index) in image_links:
+    for link, index in image_links:
         try:
             response = requests.get(link, stream=True)
             response.raise_for_status()
@@ -186,6 +180,7 @@ def download_images_with_index(video_id, image_links: list[tuple[str,int]], outp
             print(f"Downloaded: {file_name}")
         except requests.RequestException as e:
             print(f"Failed to download {link}: {e}")
+
 
 # Detect content type using regex
 def is_slideshow(url: str):
@@ -221,6 +216,7 @@ def download_video(video_id, url, output_dir, cookies_file):
     except Exception as e:
         print(f"Failed to download video: {e}")
 
+
 def check_audio_only(url, cookies_file):
     """
     Extracts Tiktok metadata and evaluates if it is audio-only
@@ -239,7 +235,7 @@ def check_audio_only(url, cookies_file):
         "noplaylist": True,  # Single video download
         "quiet": False,  # Verbose output
         "cookiefile": netscape_cookies,  # Use cookies
-        "skip_download":True, # Don't download the video
+        "skip_download": True,  # Don't download the video
     }
 
     try:
@@ -258,6 +254,7 @@ def check_audio_only(url, cookies_file):
     except Exception as e:
         print(f"Failed to download video metadata: {e}")
 
+
 def extract_video_id(url):
     """
     Extracts video ID first with a regex or GET request
@@ -266,7 +263,7 @@ def extract_video_id(url):
     Short URLs (such as those shared externally) need a GET request to resolve the full URL first
     """
     # retrieve the 19 digit video ID, rest is optional
-    video_id_pattern = re.compile(r'tiktok\.com/.*/(\d{1,19})(?:\?.*)?')
+    video_id_pattern = re.compile(r"tiktok\.com/.*/(\d{1,19})(?:\?.*)?")
 
     # Attempt to find the video ID in the given URL
     match = video_id_pattern.search(url)
@@ -283,16 +280,13 @@ def extract_video_id(url):
     # Return the captured video ID
     return match.group(1)
 
+
 def main():
     # Parse command-line args
     parser = argparse.ArgumentParser(description="Download TikTok slideshow images.")
     parser.add_argument("link", help="TikTok video link")
-    parser.add_argument(
-        "--cookies", required=True, help="Path to the cookies file (cookies.json)"
-    )
-    parser.add_argument(
-        "--output", required=True, help="Output folder for downloaded images"
-    )
+    parser.add_argument("--cookies", required=True, help="Path to the cookies file (cookies.json)")
+    parser.add_argument("--output", required=True, help="Output folder for downloaded images")
     args = parser.parse_args()
 
     video_id = extract_video_id(args.link)
@@ -307,7 +301,7 @@ def main():
             # Parse and download images
             if image_links := parse_slideshow_links_with_index(html):
                 print(f"Found {len(image_links)} images. Downloading...")
-                download_images_with_index(video_id,image_links, args.output)
+                download_images_with_index(video_id, image_links, args.output)
             else:
                 print("No images found.")
     elif not is_slideshow(args.link):

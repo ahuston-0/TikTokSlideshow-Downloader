@@ -15,6 +15,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
+from tiktok_captcha_solver import SeleniumSolver
+import undetected_chromedriver as uc
+from shutil import which
 
 
 # TODO: auto load cookies from browser files
@@ -66,58 +69,52 @@ def json_to_netscape(json_file):
                 value = cookie.get("value", "")
 
                 # Write to Netscape format
-                file.write(
-                    f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n"
-                )
+                file.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
 
         return netscape_file
     except Exception as e:
         print(f"Error converting cookies: {e}")
 
+
 def nav_collections(driver):
     # Wait for the page to load completely
     WebDriverWait(driver, 10).until(
-        EC.visibility_of_element_located(
-            (By.CSS_SELECTOR, ".css-18ie8zf-PFavorite")
-        )
-            )
+        EC.visibility_of_element_located((By.CSS_SELECTOR, ".css-1wncxfu-PFavorite"))
+    )
 
     # go to favorites
-    clickable = driver.find_element(By.CSS_SELECTOR, ".css-18ie8zf-PFavorite");
+    clickable = driver.find_element(By.CSS_SELECTOR, ".css-1wncxfu-PFavorite")
     clickable.click()
-    WebDriverWait(driver, 10).until(
-        EC.visibility_of_all_elements_located(
-            (By.ID, "collections")
-        )
-    )
+    WebDriverWait(driver, 10).until(EC.visibility_of_all_elements_located((By.ID, "collections")))
 
     # get collections
-    clickable = driver.find_element(By.ID, "collections");
+    clickable = driver.find_element(By.ID, "collections")
     clickable.click()
 
     WebDriverWait(driver, 10).until(
-        EC.visibility_of_all_elements_located(
-            (By.CSS_SELECTOR, "[data-e2e='collection-item']")
-        )
+        EC.visibility_of_all_elements_located((By.CSS_SELECTOR, "[data-e2e='collection-item']"))
     )
+
 
 # Fetch the TikTok page
 def fetch_page(url: str, file_path: str):
     options = Options()
-    options.add_argument("--headless")
+    # options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("start-maximized")
-    options.add_argument("enable-automation")
+    # options.add_argument("start-maximized")
+    # options.add_argument("enable-automation")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--window-size=1920x1080")
-    options.add_argument(f"user-agent={UserAgent(platforms="desktop").chrome}")
+    # options.add_argument(f"user-agent={UserAgent(platforms='desktop').chrome}")
 
+    uc_driver = which("undetected-chromedriver")
+    browser_path = which("chromium")
     # Set up WebDriver Manager
-    driver = webdriver.Chrome(
-        options=options, service=ChromeService()
-    )
+    driver = uc.Chrome(
+        driver_executable_path=uc_driver, browser_executable_path=browser_path
+    )  # options=options, service=ChromeService())
     driver.get("https://www.tiktok.com/")
     driver.set_window_size(1920, 1080)
 
@@ -125,34 +122,47 @@ def fetch_page(url: str, file_path: str):
     load_cookies(driver, file_path)
     driver.refresh()
 
+    api_key = ""
+
+    with open("sadcaptcha.key") as f:
+        api_key = f.read()
+
+    sadcaptcha = SeleniumSolver(
+        driver,
+        api_key,
+        mouse_step_size=1,  # Adjust to change mouse speed
+        mouse_step_delay_ms=10,  # Adjust to change mouse speed
+    )
+
     # Navigate to the target URL
     driver.get(url)
+    sadcaptcha.solve_captcha_if_present()
 
     try:
         nav_collections(driver)
         # load all collections
         SCROLL_PAUSE_TIME = 2.0
 
-        collection_count=int(driver.find_element(By.ID, "collections").text.split(" ")[-1])
+        collection_count = int(driver.find_element(By.ID, "collections").text.split(" ")[-1])
         print(f"expecting {collection_count} collections")
 
         # get initial collections
-        elements=driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
+        elements = driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
         print(f"starting with {len(elements)} collections")
         retries = 0
 
         while True:
             for element in elements:
                 driver.execute_script("arguments[0].scrollIntoView();", element)
-                time.sleep(SCROLL_PAUSE_TIME/(len(elements)**0.5)*random.random() )
+                time.sleep(SCROLL_PAUSE_TIME / (len(elements) ** 0.5) * random.random())
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
 
             # Wait to load page
             time.sleep(SCROLL_PAUSE_TIME)
 
-            new_elements=driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
+            new_elements = driver.find_elements(By.CSS_SELECTOR, "[data-e2e='collection-item']")
 
-            elem_set=set(new_elements)
+            elem_set = set(new_elements)
             if set(elements) == elem_set:
                 if retries == 3 or len(elem_set) == collection_count:
                     print(f"found {len(elem_set)} collections")
@@ -173,68 +183,70 @@ def fetch_page(url: str, file_path: str):
     finally:
         driver.quit()
 
+
 def parse_collections(html):
     # collection div class css-13fa1gi-DivWrapper
     # class link-a11y-focus, get href
     # get picture/img
     # alt is collection name, src is pic
     soup = bs4.BeautifulSoup(html, "html.parser")
-    collection_tags = soup.find_all("div",attrs={"data-e2e":"collection-item"})
-    collections=[]
+    collection_tags = soup.find_all("div", attrs={"data-e2e": "collection-item"})
+    collections = []
     for collection in collection_tags:
-        anchor = typing.cast(typing.Optional[bs4.element.Tag],collection.find("a", "link-a11y-focus"))
+        anchor = typing.cast(
+            typing.Optional[bs4.element.Tag], collection.find("a", "link-a11y-focus")
+        )
         if anchor is None:
             raise RuntimeError("Collection div with URL does not exist")
 
-        href = typing.cast(str,anchor["href"])
+        href = typing.cast(str, anchor["href"])
         url = "https://tiktok.com" + href
 
-        image = typing.cast(typing.Optional[bs4.element.Tag],anchor.find("img"))
-        name=""
-        image_url=""
+        image = typing.cast(typing.Optional[bs4.element.Tag], anchor.find("img"))
+        name = ""
+        image_url = ""
         if image is None:
-             footer=typing.cast(typing.Optional[bs4.element.Tag],anchor.find("div",attrs={"data-e2e":"collection-card-footer"}))
-             if footer is None:
-                 raise RuntimeError("name cannot be determined")
-             span=footer.find("span")
-             if span is None:
-                 raise RuntimeError("name cannot be determined")
-             name=span.text
+            footer = typing.cast(
+                typing.Optional[bs4.element.Tag],
+                anchor.find("div", attrs={"data-e2e": "collection-card-footer"}),
+            )
+            if footer is None:
+                raise RuntimeError("name cannot be determined")
+            span = footer.find("span")
+            if span is None:
+                raise RuntimeError("name cannot be determined")
+            name = span.text
         else:
             name = image["alt"]
             image_url = image["src"]
 
-
-        collection_dict = {
-            "name": name,
-            "image": image_url,
-            "url": url
-        }
+        collection_dict = {"name": name, "image": image_url, "url": url}
         collections += [collection_dict]
 
     return collections
+
 
 def collections_to_dict(collections):
     collection_dict = {}
     trans_table = str.maketrans(" ", "-")
     for collection in collections:
         fixed_name = collection["name"]
-        fixed_name = ''.join(char for char in fixed_name if char.isascii())
+        fixed_name = "".join(char for char in fixed_name if char.isascii())
         fixed_name = fixed_name.strip()
         fixed_name = fixed_name.translate(trans_table)
-        fixed_name = ''.join(char for char in fixed_name if char.isalnum() or char == '-')
+        fixed_name = "".join(char for char in fixed_name if char.isalnum() or char == "-")
 
         collection_dict.update({fixed_name: collection})
 
     return collection_dict
 
 
-def export_collections(collections,yaml_file):
+def export_collections(collections, yaml_file):
     data = None
-    yaml = YAML(typ='rt')
+    yaml = YAML(typ="rt")
 
     try:
-        with open(yaml_file, 'r') as f:
+        with open(yaml_file, "r") as f:
             data = yaml.load(f)
     except FileNotFoundError:
         print("file does not exist, initializing to be empty dict")
@@ -242,28 +254,29 @@ def export_collections(collections,yaml_file):
 
     if data is None:
         raise RuntimeError("failed to load yaml")
+    print(data)
     data.update({"AutoCollections": collections})
 
-    with open(yaml_file, 'w+') as f:
-        yaml.dump(data,f)
+    # with open(yaml_file, "w+") as f:
+    #     yaml.dump(data, f)
+
 
 def main():
     # Parse command-line args
     parser = argparse.ArgumentParser(description="Download TikTok slideshow images.")
     parser.add_argument("link", help="TikTok video link")
+    parser.add_argument("--cookies", required=True, help="Path to the cookies file (cookies.json)")
     parser.add_argument(
-        "--cookies", required=True, help="Path to the cookies file (cookies.json)"
+        "--sadcaptcha-key-location", required=True, help="Path to sadcaptcha key file"
     )
-    parser.add_argument(
-        "--output", required=True, help="Output to yaml file "
-    )
+    parser.add_argument("--output", required=True, help="Output to yaml file ")
     args = parser.parse_args()
 
     html = fetch_page(args.link, args.cookies)
     collections = parse_collections(html)
     collections = collections_to_dict(collections)
-
     export_collections(collections, args.output)
+
 
 if __name__ == "__main__":
     main()

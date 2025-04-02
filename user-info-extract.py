@@ -7,23 +7,22 @@ from pathlib import Path
 
 from tikapi import TikAPI, ValidationException, ResponseException
 
-MAX_ATTEMPTS=2
-base_dir="/ZFS/ZFS-primary/backups/tiktok-backups"
-video_dir="raw-videos"
-user_dir="user-details"
-database_path=f"{base_dir}/{video_dir}/index.db"
-image_regex=re.compile(r"\/([^\/]*\.(?:jpeg|png|jpg|image))")
+MAX_ATTEMPTS = 2
+base_dir = "/ZFS/ZFS-primary/backups/tiktok-backups"
+video_dir = "raw-videos"
+user_dir = "user-details"
+database_path = f"{base_dir}/{video_dir}/index.db"
+image_regex = re.compile(r"\/([^\/]*\.(?:jpeg|png|jpg|image))")
+
 
 def extract_users(username):
-    api_key=None
-    with open("./tikapi.key","r") as f:
-        api_key=f.read().strip()
+    api_key = None
+    with open("./tikapi.key", "r") as f:
+        api_key = f.read().strip()
     print(f"extracting {username}")
     api = TikAPI(api_key)
     try:
-        response = api.public.check(
-            username=username
-        )
+        response = api.public.check(username=username)
 
         return response.json()
 
@@ -36,19 +35,20 @@ def extract_users(username):
         print(e, e.response.status_code)
 
 
-def update_user_details_table(userid,username):
+def update_user_details_table(userid, username):
     print(f"updating user detail ts for {username}")
-    con =  sqlite3.connect(database_path,timeout = 500)
-    user_query="insert into userdetailtable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set username=?,lastupdatedts=unixepoch('now')"
-    con.execute(user_query,(userid,username,username))
+    con = sqlite3.connect(database_path, timeout=500)
+    user_query = "insert into userdetailtable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set username=?,lastupdatedts=unixepoch('now')"
+    con.execute(user_query, (userid, username, username))
     con.commit()
     con.close()
 
-def blacklist_user(userid,username):
+
+def blacklist_user(userid, username):
     print(f"blacklisting {userid}/{username}")
-    con =  sqlite3.connect(database_path,timeout = 500)
-    user_query="insert into userblacklisttable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set username=?,lastupdatedts=unixepoch('now')"
-    con.execute(user_query,(userid,username,username))
+    con = sqlite3.connect(database_path, timeout=500)
+    user_query = "insert into userblacklisttable(userid,username,lastupdatedts) values (?,?,unixepoch('now')) on conflict(userid) do update set username=?,lastupdatedts=unixepoch('now')"
+    con.execute(user_query, (userid, username, username))
     con.commit()
     con.close()
 
@@ -102,18 +102,17 @@ def json_to_netscape(json_file):
                 value = cookie.get("value", "")
 
                 # Write to Netscape format
-                file.write(
-                    f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n"
-                )
+                file.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
 
         return netscape_file
     except Exception as e:
         print(f"Error converting cookies: {e}")
 
+
 def fetch_users():
     print("fetching un-checked users")
-    con =  sqlite3.connect(database_path,timeout = 500)
-    user_query="""
+    con = sqlite3.connect(database_path, timeout=500)
+    user_query = """
     SELECT t1.userid, t1.username FROM usertable t1
     LEFT JOIN userdetailtable t2 ON t2.userid = t1.userid
     LEFT JOIN userblacklisttable t3 on t3.userid=t1.userid
@@ -124,29 +123,30 @@ def fetch_users():
     con.close()
     return users
 
-def fetch_image(path,image_url):
+
+def fetch_image(path, image_url):
     print(f"fetching image {path}")
     img_data = requests.get(image_url).content
-    with open(path, 'wb') as handler:
+    with open(path, "wb") as handler:
         handler.write(img_data)
 
-def main():
 
+def main():
     users = fetch_users()
     empty_json = {}
     with open(f"./empty.json", "r") as f:
         empty_json = json.load(f)
 
-    for (userid, username) in users:
+    for userid, username in users:
         max_retries = 3
         retries = max_retries
         failed = 0
-        for i in range(1,retries+1):
+        for i in range(1, retries + 1):
             retries -= 1
             print(f"{userid}/{username}: attempt ({i}/{max_retries})")
             user_data = extract_users(username)
 
-            #print(user_data)
+            # print(user_data)
             if user_data is None:
                 failed += 1
                 continue
@@ -154,32 +154,43 @@ def main():
                 failed += 1
                 continue
 
-            user_path=f"{base_dir}/{user_dir}/{userid}"
+            user_path = f"{base_dir}/{user_dir}/{userid}"
             Path(user_path).mkdir(exist_ok=True)
 
-            with open(f"{user_path}/info.json", 'w', encoding='utf-8') as f:
+            with open(f"{user_path}/info.json", "w", encoding="utf-8") as f:
                 json.dump(user_data, f, ensure_ascii=False, indent=4)
-            avatar_larger_url=user_data["userInfo"]["user"]["avatarLarger"]
-            avatar_medium_url=user_data["userInfo"]["user"]["avatarMedium"]
-            avatar_thumb_url=user_data["userInfo"]["user"]["avatarThumb"]
+            avatar_larger_url = user_data["userInfo"]["user"]["avatarLarger"]
+            avatar_medium_url = user_data["userInfo"]["user"]["avatarMedium"]
+            avatar_thumb_url = user_data["userInfo"]["user"]["avatarThumb"]
 
-            avatar_larger_name=image_regex.search(avatar_larger_url)
-            avatar_medium_name=image_regex.search(avatar_medium_url)
-            avatar_thumb_name=image_regex.search(avatar_thumb_url)
+            avatar_larger_name = image_regex.search(avatar_larger_url)
+            avatar_medium_name = image_regex.search(avatar_medium_url)
+            avatar_thumb_name = image_regex.search(avatar_thumb_url)
 
-            avatar_larger_name = avatar_larger_name.group(1) if avatar_larger_name is not None else "profile_large.image"
-            avatar_medium_name = avatar_medium_name.group(1) if avatar_medium_name is not None else "profile_medium.image"
-            avatar_thumb_name = avatar_thumb_name.group(1) if avatar_thumb_name is not None else "profile_thumb.image"
+            avatar_larger_name = (
+                avatar_larger_name.group(1)
+                if avatar_larger_name is not None
+                else "profile_large.image"
+            )
+            avatar_medium_name = (
+                avatar_medium_name.group(1)
+                if avatar_medium_name is not None
+                else "profile_medium.image"
+            )
+            avatar_thumb_name = (
+                avatar_thumb_name.group(1)
+                if avatar_thumb_name is not None
+                else "profile_thumb.image"
+            )
 
-            fetch_image(f"{user_path}/{avatar_larger_name}",avatar_larger_url)
-            fetch_image(f"{user_path}/{avatar_medium_name}",avatar_medium_url)
-            fetch_image(f"{user_path}/{avatar_thumb_name}",avatar_thumb_url)
-            update_user_details_table(userid,username)
+            fetch_image(f"{user_path}/{avatar_larger_name}", avatar_larger_url)
+            fetch_image(f"{user_path}/{avatar_medium_name}", avatar_medium_url)
+            fetch_image(f"{user_path}/{avatar_thumb_name}", avatar_thumb_url)
+            update_user_details_table(userid, username)
 
             break
         if failed == max_retries:
-            blacklist_user(userid,username)
-
+            blacklist_user(userid, username)
 
 
 if __name__ == "__main__":

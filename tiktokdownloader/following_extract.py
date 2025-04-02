@@ -15,6 +15,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 from webdriver_manager.chrome import ChromeDriverManager
+from tiktok_captcha_solver import SeleniumSolver
+import undetected_chromedriver as uc
+from shutil import which
 
 
 # TODO: auto load cookies from browser files
@@ -66,13 +69,12 @@ def json_to_netscape(json_file):
                 value = cookie.get("value", "")
 
                 # Write to Netscape format
-                file.write(
-                    f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n"
-                )
+                file.write(f"{domain}\t{flag}\t{path}\t{secure}\t{expiry}\t{name}\t{value}\n")
 
         return netscape_file
     except Exception as e:
         print(f"Error converting cookies: {e}")
+
 
 # Fetch the TikTok page
 def fetch_page(url: str, file_path: str):
@@ -85,12 +87,14 @@ def fetch_page(url: str, file_path: str):
     options.add_argument("enable-automation")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--window-size=1920x1080")
-    options.add_argument(f"user-agent={UserAgent(platforms="desktop").chrome}")
+    options.add_argument(f"user-agent={UserAgent(platforms='desktop').chrome}")
 
+    uc_driver = which("undetected-chromedriver")
+    browser_path = which("chromium")
     # Set up WebDriver Manager
-    driver = webdriver.Chrome(
-        options=options, service=ChromeService()
-    )
+    driver = uc.Chrome(
+        driver_executable_path=uc_driver, browser_executable_path=browser_path
+    )  # options=options, service=ChromeService())
     driver.get("https://www.tiktok.com/")
     driver.set_window_size(1920, 1080)
 
@@ -98,49 +102,60 @@ def fetch_page(url: str, file_path: str):
     load_cookies(driver, file_path)
     driver.refresh()
 
+    api_key = ""
+
+    with open("sadcaptcha.key") as f:
+        api_key = f.read()
+
+    sadcaptcha = SeleniumSolver(
+        driver,
+        api_key,
+        mouse_step_size=1,  # Adjust to change mouse speed
+        mouse_step_delay_ms=10,  # Adjust to change mouse speed
+    )
+
     # Navigate to the target URL
     driver.get(url)
+    sadcaptcha.solve_captcha_if_present()
 
     try:
         WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located(
-                (By.CSS_SELECTOR, "[data-e2e='following']")
-            )
-                )
+            EC.visibility_of_element_located((By.CSS_SELECTOR, "[data-e2e='following']"))
+        )
 
         # go to favorites
-        clickable = driver.find_element(By.CSS_SELECTOR, "[data-e2e='following']");
+        clickable = driver.find_element(By.CSS_SELECTOR, "[data-e2e='following']")
         clickable.click()
         # load all collections
         SCROLL_PAUSE_TIME = 2.0
 
-        collection_count=int(driver.find_element(By.CSS_SELECTOR, "[data-e2e='following-count']").text)
+        collection_count = int(
+            driver.find_element(By.CSS_SELECTOR, "[data-e2e='following-count']").text
+        )
         print(f"expecting {collection_count} followers")
 
-        WebDriverWait(driver, 10).until(
-            EC.visibility_of_element_located(
-                (By.CLASS_NAME, "css-swczgi-PUniqueId")
-            )
-                )
+        WebDriverWait(driver, 30).until(
+            EC.visibility_of_element_located((By.CLASS_NAME, "es616eb8"))
+        )
 
         # get initial following
-        elements=driver.find_elements(By.CLASS_NAME, "es616eb8")
+        elements = driver.find_elements(By.CLASS_NAME, "es616eb8")
 
         print(f"starting with {len(elements)} following")
         retries = 0
-        batch_count=30
+        batch_count = 30
 
         while True:
             for element in elements[-batch_count:]:
                 driver.execute_script("arguments[0].scrollIntoView();", element)
-                time.sleep(SCROLL_PAUSE_TIME/(batch_count**0.5)*random.random() )
+                time.sleep(SCROLL_PAUSE_TIME / (batch_count**0.5) * random.random())
 
             # Wait to load page
             time.sleep(SCROLL_PAUSE_TIME)
 
-            new_elements=driver.find_elements(By.CLASS_NAME, "es616eb8")
+            new_elements = driver.find_elements(By.CLASS_NAME, "es616eb8")
 
-            elem_set=set(new_elements)
+            elem_set = set(new_elements)
             if set(elements) == elem_set:
                 if retries == 3 or len(elem_set) == collection_count:
                     print(f"found {len(elem_set)} followers")
@@ -156,9 +171,11 @@ def fetch_page(url: str, file_path: str):
         return driver.page_source
     except Exception as e:
         print(f"Failed to fetch the page: {e}")
+        print(driver.page_source)
         return None
     finally:
         driver.quit()
+
 
 def parse_following(html):
     # collection div class css-13fa1gi-DivWrapper
@@ -166,32 +183,33 @@ def parse_following(html):
     # get picture/img
     # alt is collection name, src is pic
     soup = bs4.BeautifulSoup(html, "html.parser")
-    following = soup.find_all("p",class_="es616eb8")
-    following = [i.text + '\n' for i in following]
+    following = soup.find_all("p", class_="es616eb8")
+    following = [i.text + "\n" for i in following]
 
     return following
 
 
-def export_following(following,out_file):
-    with open(out_file, 'w') as f:
+def export_following(following, out_file):
+    with open(out_file, "w") as f:
         f.writelines(following)
+
 
 def main():
     # Parse command-line args
     parser = argparse.ArgumentParser(description="Download TikTok slideshow images.")
     parser.add_argument("link", help="TikTok video link")
+    parser.add_argument("--cookies", required=True, help="Path to the cookies file (cookies.json)")
     parser.add_argument(
-        "--cookies", required=True, help="Path to the cookies file (cookies.json)"
+        "--sadcaptcha-key-location", required=True, help="Path to sadcaptcha key file"
     )
-    parser.add_argument(
-        "--output", required=True, help="Output to yaml file "
-    )
+    parser.add_argument("--output", required=True, help="Output to yaml file ")
     args = parser.parse_args()
 
     html = fetch_page(args.link, args.cookies)
     following = parse_following(html)
 
     export_following(following, args.output)
+
 
 if __name__ == "__main__":
     main()
